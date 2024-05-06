@@ -11,12 +11,8 @@ module rtb_platform::rtb_platform {
     
     // Errors
     const EInvalidBid: u64 = 1;
-    const EInvalidWork: u64 = 2;
-    const EDispute: u64 = 3;
-    const EAlreadyResolved: u64 = 4;
     const ENotPublisher: u64 = 5;
     const EInvalidWithdrawal: u64 = 6;
-    const EDeadlinePassed: u64 = 7;
     const EInsufficientBalance: u64 = 8;
     const ENotAdvertiser: u64 = 9;
     
