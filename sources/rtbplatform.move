@@ -1,8 +1,10 @@
-module rtb_platform::rtb_platform {
+module rtbplatform::rtbplatform {
     // Imports
-    use rtb_platform::rtb_platform;
+    use std::string::{String};
+    use std::vector;
+    use sui::sui::SUI;
     use sui::transfer;
-    use sui::object::{Self, UID};
+    use sui::object::{Self, UID, ID};
     use sui::tx_context::{Self, TxContext};
     use sui::clock::{Self, Clock};
     use sui::coin::{Self, Coin};
@@ -10,9 +12,9 @@ module rtb_platform::rtb_platform {
     use std::option::{Option, none, some, is_some, contains, borrow};
     
     // Errors
-    const EInvalidBid: u64 = 1;
+    // const EInvalidBid: u64 = 1;
     const ENotPublisher: u64 = 5;
-    const EInvalidWithdrawal: u64 = 6;
+    // const EInvalidWithdrawal: u64 = 6;
     const EInsufficientBalance: u64 = 8;
     const ENotAdvertiser: u64 = 9;
     
@@ -36,7 +38,7 @@ module rtb_platform::rtb_platform {
     // Bid struct
     struct Bid has key, store {
         id: UID,
-        advertId: UID,
+        advertId: ID,
         amount: u64,
         details: String,
         advertiser: address,
@@ -48,9 +50,9 @@ module rtb_platform::rtb_platform {
         principal: address,
         userName: String,
         email: String,
-        wallet: Balance<SUI>
+        wallet: Balance<SUI>,
         userType: String,
-        adverts: vector<UID>,
+        adverts: vector<ID>,
     }
 
     public entry fun create_user(
@@ -68,7 +70,7 @@ module rtb_platform::rtb_platform {
             email,
             wallet: balance::zero(),
             userType,
-            adverts: vector::empty<UID>(),
+            adverts: vector::empty<ID>(),
         };
         transfer::share_object(user);
     }
@@ -76,7 +78,7 @@ module rtb_platform::rtb_platform {
     public entry fun deposit_funds(
         user: &mut User,
         amount: Coin<SUI>,
-        ctx: &mut TxContext
+        // ctx: &mut TxContext
     ) {
         let added_balance = coin::into_balance(amount);
         balance::join(&mut user.wallet, added_balance);
@@ -89,6 +91,7 @@ module rtb_platform::rtb_platform {
         audienceType: String,
         adSlots: u64,
         duration: u64,
+        clock: &Clock,
         ctx: &mut TxContext
     ) {
         let advert_id = object::new(ctx);
@@ -104,7 +107,7 @@ module rtb_platform::rtb_platform {
             adSlots,
             available: true,
             endDate,
-            createdAt: clock::timestamp_ms(clock),,
+            createdAt: clock::timestamp_ms(clock),
         };
         transfer::share_object(advert);
     }
@@ -118,7 +121,7 @@ module rtb_platform::rtb_platform {
         let bid_id = object::new(ctx);
         let bid = Bid {
             id: bid_id,
-            advertId: advert.id,
+            advertId: object::uid_to_inner(&advert.id),
             amount,
             details,
             advertiser: tx_context::sender(ctx),
@@ -131,7 +134,7 @@ module rtb_platform::rtb_platform {
         advert: &mut Advert,
         ctx: &mut TxContext
     ) {
-      aasert!(tx_context::sender(ctx) == advert.publisher, ENotPublisher);
+      assert!(tx_context::sender(ctx) == advert.publisher, ENotPublisher);
 
       advert.advertiser = some(bid.advertiser);
       advert.cost = bid.amount;
@@ -141,15 +144,16 @@ module rtb_platform::rtb_platform {
     // pay for adslot
     public entry fun pay_for_ad_slot(
         advert: &mut Advert,
+        user: &mut User,
         ctx: &mut TxContext
     ) {
-        assert!(tx_context::sender(ctx) == advert.advertiser, ENotAdvertiser);
+        assert!(tx_context::sender(ctx) == *borrow(&advert.advertiser), ENotAdvertiser);
 
-        let added_balance = coin::into_balance(advert.cost);
-        balance::join(&mut advert.publisher added_balance);
+        let advert_costing = coin::take(&mut user.wallet, advert.cost, ctx);
+        transfer::public_transfer(advert_costing, advert.publisher);
 
-        let user = object::get::<User>(advert.advertiser);
-        vector::push_back(&mut user.adverts, advert.id);
+        let id_advert = object::uid_to_inner(&advert.id);
+        vector::push_back(&mut user.adverts, id_advert);
     }
 
     public entry fun withdraw_funds(
@@ -165,7 +169,8 @@ module rtb_platform::rtb_platform {
     // check if end date has passed and end the advert free slots
     public entry fun check_advert_end_date(
         advert: &mut Advert,
-        ctx: &mut TxContext
+        clock: &Clock,
+        // ctx: &mut TxContext
     ) {
         if (clock::timestamp_ms(clock) >= advert.endDate) {
             advert.available = true;
@@ -175,19 +180,19 @@ module rtb_platform::rtb_platform {
     }
 
     // get advert details
-    public entry fun get_advert_details(advert: &Advert): AdvertDetails {
-        let advert_details = AdvertDetails {
-            title: advert.title,
-            details: advert.details,
-            audienceType: advert.audienceType,
-            publisher: advert.publisher,
-            advertiser: advert.advertiser,
-            cost: advert.cost,
-            adSlots: advert.adSlots,
-            available: advert.available,
-            endDate: advert.endDate,
-            createdAt: advert.createdAt,
-        };
-        advert_details
-    }       
+     public entry fun get_advert_details(advert: &Advert): (String, String, String, address, Option<address>, u64, u64, bool, u64, u64){
+       (
+              advert.title,
+              advert.details,
+              advert.audienceType,
+              advert.publisher,
+              advert.advertiser,
+              advert.cost,
+              advert.adSlots,
+              advert.available,
+              advert.endDate,
+              advert.createdAt
+       )
+     
+    }   
 }
