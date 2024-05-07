@@ -133,7 +133,7 @@ Additionally, you can create more addresses and to do so, follow the next sectio
 
 For this tutorial we need two separate addresses. To create an address run this command in the terminal:
 
-```shsh
+```sh
 sui client new-address ed25519
 ```
 
@@ -143,7 +143,7 @@ where:
 
 And the output should be similar to this:
 
-```
+``` sh
 ╭─────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Created new keypair and saved it to keystore.                                                   │
 ├────────────────┬────────────────────────────────────────────────────────────────────────────────┤
@@ -157,7 +157,7 @@ Use `recoveryPhrase` words to import the address to the wallet app.
 
 ### Get localnet SUI tokens
 
-```shsh
+```sh
 curl --location --request POST 'http://127.0.0.1:9123/gas' --header 'Content-Type: application/json' \
 --data-raw '{
     "FixedAmountRequest": {
