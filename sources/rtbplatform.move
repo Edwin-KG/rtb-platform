@@ -10,14 +10,14 @@ module rtbplatform::rtbplatform {
     use sui::coin::{Self, Coin};
     use sui::balance::{Self, Balance};
     use std::option::{Option, none, some, is_some, contains, borrow};
-    
+
     // Errors
-    // const EInvalidBid: u64 = 1;
     const ENotPublisher: u64 = 5;
-    // const EInvalidWithdrawal: u64 = 6;
     const EInsufficientBalance: u64 = 8;
     const ENotAdvertiser: u64 = 9;
-    
+    const EUnauthorizedWithdrawal: u64 = 10;
+    const EInvalidDeposit: u64 = 11;
+
     // Struct definitions
 
     // Advert struct
@@ -75,15 +75,24 @@ module rtbplatform::rtbplatform {
         transfer::share_object(user);
     }
 
+    public entry fun initialize_user_wallet(
+        user: &mut User,
+        initial_balance: Coin<SUI>,
+        ctx: &mut TxContext
+    ) {
+        let added_balance = coin::into_balance(initial_balance);
+        balance::join(&mut user.wallet, added_balance);
+    }
+
     public entry fun deposit_funds(
         user: &mut User,
         amount: Coin<SUI>,
-        // ctx: &mut TxContext
+        ctx: &mut TxContext
     ) {
+        assert!(tx_context::sender(ctx) == user.principal, EInvalidDeposit); // Add access control check
         let added_balance = coin::into_balance(amount);
         balance::join(&mut user.wallet, added_balance);
     }
-    
 
     public entry fun create_advert_slot(
         title: String,
@@ -118,6 +127,9 @@ module rtbplatform::rtbplatform {
         details: String,
         ctx: &mut TxContext
     ) {
+        assert!(amount >= 100, EInvalidBidAmount); // Add validation for bid amount
+        assert!(string::length(&details) >= 10, EInvalidBidDetails); // Add validation for bid details
+
         let bid_id = object::new(ctx);
         let bid = Bid {
             id: bid_id,
@@ -134,11 +146,14 @@ module rtbplatform::rtbplatform {
         advert: &mut Advert,
         ctx: &mut TxContext
     ) {
-      assert!(tx_context::sender(ctx) == advert.publisher, ENotPublisher);
+        assert!(tx_context::sender(ctx) == advert.publisher, ENotPublisher);
 
-      advert.advertiser = some(bid.advertiser);
-      advert.cost = bid.amount;
-      advert.available = false;
+        advert.advertiser = some(bid.advertiser);
+        advert.cost = bid.amount;
+        advert.available = false;
+
+        // Handle multiple bids (e.g., select the highest bid)
+        // ...
     }
 
     // pay for adslot
@@ -147,7 +162,8 @@ module rtbplatform::rtbplatform {
         user: &mut User,
         ctx: &mut TxContext
     ) {
-        assert!(tx_context::sender(ctx) == *borrow(&advert.advertiser), ENotAdvertiser);
+        let advertiser_address = *borrow(&advert.advertiser); // Corrected usage of borrow
+        assert!(tx_context::sender(ctx) == advertiser_address, ENotAdvertiser);
 
         let advert_costing = coin::take(&mut user.wallet, advert.cost, ctx);
         transfer::public_transfer(advert_costing, advert.publisher);
@@ -161,6 +177,7 @@ module rtbplatform::rtbplatform {
         amount: u64,
         ctx: &mut TxContext
     ) {
+        assert!(tx_context::sender(ctx) == user.principal, EUnauthorizedWithdrawal); // Add access control check
         assert!(balance::value(&user.wallet) >= amount, EInsufficientBalance);
         let withdrawn = coin::take(&mut user.wallet, amount, ctx);
         transfer::public_transfer(withdrawn, user.principal);
@@ -170,29 +187,44 @@ module rtbplatform::rtbplatform {
     public entry fun check_advert_end_date(
         advert: &mut Advert,
         clock: &Clock,
-        // ctx: &mut TxContext
+        ctx: &mut TxContext
     ) {
         if (clock::timestamp_ms(clock) >= advert.endDate) {
             advert.available = true;
             advert.advertiser = none();
             advert.cost = 0;
+
+            // Handle expired adverts (e.g., refunds, notifications)
+            // ...
         }
     }
 
     // get advert details
-     public entry fun get_advert_details(advert: &Advert): (String, String, String, address, Option<address>, u64, u64, bool, u64, u64){
-       (
-              advert.title,
-              advert.details,
-              advert.audienceType,
-              advert.publisher,
-              advert.advertiser,
-              advert.cost,
-              advert.adSlots,
-              advert.available,
-              advert.endDate,
-              advert.createdAt
-       )
-     
-    }   
+    public entry fun get_advert_details(advert: &Advert): AdvertDetails {
+        AdvertDetails {
+            title: advert.title,
+            details: advert.details,
+            audienceType: advert.audienceType,
+            publisher: advert.publisher,
+            advertiser: advert.advertiser,
+            cost: advert.cost,
+            adSlots: advert.adSlots,
+            available: advert.available,
+            endDate: advert.endDate,
+            createdAt: advert.createdAt,
+        }
+    }
+
+    struct AdvertDetails has drop {
+        title: String,
+        details: String,
+        audienceType: String,
+        publisher: address,
+        advertiser: Option<address>,
+        cost: u64,
+        adSlots: u64,
+        available: bool,
+        endDate: u64,
+        createdAt: u64,
+    }
 }
