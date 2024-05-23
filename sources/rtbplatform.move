@@ -265,3 +265,15 @@ module rtbplatform::rtbplatform {
         createdAt: u64,
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
