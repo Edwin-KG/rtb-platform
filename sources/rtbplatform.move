@@ -10,7 +10,6 @@ module rtbplatform::rtbplatform {
     use sui::coin::{Self, Coin};
     use sui::balance::{Self, Balance};
     use std::option::{Option, none, some, borrow};
-
     // Errors
     const ENotPublisher: u64 = 1;
     const EInsufficientBalance: u64 = 2;
@@ -18,9 +17,8 @@ module rtbplatform::rtbplatform {
     const EInvalidBidAmount: u64 = 4;
     const EUnauthorizedWithdrawal: u64 = 5;
     const EInvalidDeposit: u64 = 6;
-
+    const EAdvertNotFound: u64 = 7;
     // Struct definitions
-
     // Advert struct
     struct Advert has key, store {
         id: UID,
@@ -35,7 +33,6 @@ module rtbplatform::rtbplatform {
         endDate: u64,
         createdAt: u64,
     }
-
     // Bid struct
     struct Bid has key, store {
         id: UID,
@@ -44,7 +41,6 @@ module rtbplatform::rtbplatform {
         details: String,
         advertiser: address,
     }
-
     // User struct
     struct User has key, store {
         id: UID,
@@ -55,7 +51,6 @@ module rtbplatform::rtbplatform {
         userType: String,
         adverts: vector<ID>,
     }
-
     public entry fun create_user(
         principal: address,
         userName: String,
@@ -75,7 +70,6 @@ module rtbplatform::rtbplatform {
         };
         transfer::share_object(user);
     }
-
     public entry fun initialize_user_wallet(
         user: &mut User,
         initial_balance: Coin<SUI>,
@@ -84,7 +78,6 @@ module rtbplatform::rtbplatform {
         let added_balance = coin::into_balance(initial_balance);
         balance::join(&mut user.wallet, added_balance);
     }
-
     public entry fun deposit_funds(
         user: &mut User,
         amount: Coin<SUI>,
@@ -94,7 +87,6 @@ module rtbplatform::rtbplatform {
         let added_balance = coin::into_balance(amount);
         balance::join(&mut user.wallet, added_balance);
     }
-
     public entry fun create_advert_slot(
         title: String,
         details: String,
@@ -121,7 +113,6 @@ module rtbplatform::rtbplatform {
         };
         transfer::share_object(advert);
     }
-
     public entry fun bid_ad_slots(
         advert: &mut Advert,
         amount: u64,
@@ -129,7 +120,6 @@ module rtbplatform::rtbplatform {
         ctx: &mut TxContext
     ) {
         assert!(amount >= 100, EInvalidBidAmount); // Add validation for bid amount
-
         let bid_id = object::new(ctx);
         let bid = Bid {
             id: bid_id,
@@ -140,19 +130,16 @@ module rtbplatform::rtbplatform {
         };
         transfer::share_object(bid);
     }
-
     public entry fun select_bid(
         bid: &Bid,
         advert: &mut Advert,
         ctx: &mut TxContext
     ) {
         assert!(tx_context::sender(ctx) == advert.publisher, ENotPublisher);
-
         advert.advertiser = some(bid.advertiser);
         advert.cost = bid.amount;
         advert.available = false;
     }
-
     // pay for adslot
     public entry fun pay_for_ad_slot(
         advert: &mut Advert,
@@ -161,14 +148,11 @@ module rtbplatform::rtbplatform {
     ) {
         let advertiser_address = *borrow(&advert.advertiser); // Corrected usage of borrow
         assert!(tx_context::sender(ctx) == advertiser_address, ENotAdvertiser);
-
         let advert_costing = coin::take(&mut user.wallet, advert.cost, ctx);
         transfer::public_transfer(advert_costing, advert.publisher);
-
         let id_advert = object::uid_to_inner(&advert.id);
         vector::push_back(&mut user.adverts, id_advert);
     }
-
     public entry fun withdraw_funds(
         user: &mut User,
         amount: u64,
@@ -179,7 +163,6 @@ module rtbplatform::rtbplatform {
         let withdrawn = coin::take(&mut user.wallet, amount, ctx);
         transfer::public_transfer(withdrawn, user.principal);
     }
-
     // check if end date has passed and end the advert free slots
     public entry fun check_advert_end_date(
         advert: &mut Advert,
@@ -192,7 +175,6 @@ module rtbplatform::rtbplatform {
             advert.cost = 0;
         }
     }
-
     // get advert details
     public entry fun get_advert_details(advert: &Advert): AdvertDetails {
         AdvertDetails {
@@ -208,7 +190,6 @@ module rtbplatform::rtbplatform {
             createdAt: advert.createdAt,
         }
     }
-
     struct AdvertDetails has drop {
         title: String,
         details: String,
@@ -220,5 +201,19 @@ module rtbplatform::rtbplatform {
         available: bool,
         endDate: u64,
         createdAt: u64,
+    }
+    // New function to cancel an advert
+    public entry fun cancel_advert(
+        advert: &mut Advert,
+        ctx: &mut TxContext
+    ) {
+        assert!(tx_context::sender(ctx) == advert.publisher, ENotPublisher);
+        advert.available = false;
+        advert.advertiser = none();
+        advert.cost = 0;
+    }
+    // Event emission for logging important actions
+    public fun emit_event(msg: String, ctx: &mut TxContext) {
+        event::emit(msg, ctx);
     }
 }
