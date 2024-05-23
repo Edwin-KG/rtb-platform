@@ -1,4 +1,5 @@
 module rtbplatform::rtbplatform {
+    // Imports
     use std::string::{String};
     use std::vector;
     use sui::sui::SUI;
@@ -16,6 +17,7 @@ module rtbplatform::rtbplatform {
     const EInvalidBidAmount: u64 = 4;
     const EUnauthorizedWithdrawal: u64 = 5;
     const EInvalidDeposit: u64 = 6;
+    const EAdvertNotFound: u64 = 7;
     // Struct definitions
     // Advert struct
     struct Advert has key, store {
@@ -49,14 +51,6 @@ module rtbplatform::rtbplatform {
         userType: String,
         adverts: vector<ID>,
     }
-    /**
-     * Creates a new user with the specified details.
-     * @param principal - The address of the user.
-     * @param userName - The name of the user.
-     * @param email - The email of the user.
-     * @param userType - The type of the user (e.g., advertiser, publisher).
-     * @param ctx - The transaction context.
-     */
     public entry fun create_user(
         principal: address,
         userName: String,
@@ -76,12 +70,6 @@ module rtbplatform::rtbplatform {
         };
         transfer::share_object(user);
     }
-    /**
-     * Initializes the wallet of the user with an initial balance.
-     * @param user - The user whose wallet is initialized.
-     * @param initial_balance - The initial balance to add to the wallet.
-     * @param _ctx - The transaction context.
-     */
     public entry fun initialize_user_wallet(
         user: &mut User,
         initial_balance: Coin<SUI>,
@@ -90,12 +78,6 @@ module rtbplatform::rtbplatform {
         let added_balance = coin::into_balance(initial_balance);
         balance::join(&mut user.wallet, added_balance);
     }
-    /**
-     * Deposits funds into the user's wallet.
-     * @param user - The user who is depositing funds.
-     * @param amount - The amount to deposit.
-     * @param ctx - The transaction context.
-     */
     public entry fun deposit_funds(
         user: &mut User,
         amount: Coin<SUI>,
@@ -105,16 +87,6 @@ module rtbplatform::rtbplatform {
         let added_balance = coin::into_balance(amount);
         balance::join(&mut user.wallet, added_balance);
     }
-    /**
-     * Creates a new advert slot with the specified details.
-     * @param title - The title of the advert.
-     * @param details - The details of the advert.
-     * @param audienceType - The audience type for the advert.
-     * @param adSlots - The number of ad slots available.
-     * @param duration - The duration of the advert in milliseconds.
-     * @param clock - The clock to get the current time.
-     * @param ctx - The transaction context.
-     */
     public entry fun create_advert_slot(
         title: String,
         details: String,
@@ -141,13 +113,6 @@ module rtbplatform::rtbplatform {
         };
         transfer::share_object(advert);
     }
-    /**
-     * Places a bid for the specified advert.
-     * @param advert - The advert for which the bid is placed.
-     * @param amount - The amount of the bid.
-     * @param details - The details of the bid.
-     * @param ctx - The transaction context.
-     */
     public entry fun bid_ad_slots(
         advert: &mut Advert,
         amount: u64,
@@ -165,12 +130,6 @@ module rtbplatform::rtbplatform {
         };
         transfer::share_object(bid);
     }
-    /**
-     * Selects a bid for the specified advert.
-     * @param bid - The bid to select.
-     * @param advert - The advert for which the bid is selected.
-     * @param ctx - The transaction context.
-     */
     public entry fun select_bid(
         bid: &Bid,
         advert: &mut Advert,
@@ -181,12 +140,7 @@ module rtbplatform::rtbplatform {
         advert.cost = bid.amount;
         advert.available = false;
     }
-    /**
-     * Pays for an ad slot.
-     * @param advert - The advert for which the ad slot is paid.
-     * @param user - The user who is paying for the ad slot.
-     * @param ctx - The transaction context.
-     */
+    // pay for adslot
     public entry fun pay_for_ad_slot(
         advert: &mut Advert,
         user: &mut User,
@@ -199,12 +153,6 @@ module rtbplatform::rtbplatform {
         let id_advert = object::uid_to_inner(&advert.id);
         vector::push_back(&mut user.adverts, id_advert);
     }
-    /**
-     * Withdraws funds from the user's wallet.
-     * @param user - The user who is withdrawing funds.
-     * @param amount - The amount to withdraw.
-     * @param ctx - The transaction context.
-     */
     public entry fun withdraw_funds(
         user: &mut User,
         amount: u64,
@@ -215,12 +163,7 @@ module rtbplatform::rtbplatform {
         let withdrawn = coin::take(&mut user.wallet, amount, ctx);
         transfer::public_transfer(withdrawn, user.principal);
     }
-    /**
-     * Checks if the end date of the advert has passed and resets the advert if expired.
-     * @param advert - The advert to check.
-     * @param clock - The clock to get the current time.
-     * @param _ctx - The transaction context.
-     */
+    // check if end date has passed and end the advert free slots
     public entry fun check_advert_end_date(
         advert: &mut Advert,
         clock: &Clock,
@@ -232,11 +175,7 @@ module rtbplatform::rtbplatform {
             advert.cost = 0;
         }
     }
-    /**
-     * Gets the details of the specified advert.
-     * @param advert - The advert to get details for.
-     * @returns The details of the advert.
-     */
+    // get advert details
     public entry fun get_advert_details(advert: &Advert): AdvertDetails {
         AdvertDetails {
             title: advert.title,
@@ -251,7 +190,6 @@ module rtbplatform::rtbplatform {
             createdAt: advert.createdAt,
         }
     }
-    // Struct for AdvertDetails
     struct AdvertDetails has drop {
         title: String,
         details: String,
@@ -264,16 +202,18 @@ module rtbplatform::rtbplatform {
         endDate: u64,
         createdAt: u64,
     }
+    // New function to cancel an advert
+    public entry fun cancel_advert(
+        advert: &mut Advert,
+        ctx: &mut TxContext
+    ) {
+        assert!(tx_context::sender(ctx) == advert.publisher, ENotPublisher);
+        advert.available = false;
+        advert.advertiser = none();
+        advert.cost = 0;
+    }
+    // Event emission for logging important actions
+    public fun emit_event(msg: String, ctx: &mut TxContext) {
+        event::emit(msg, ctx);
+    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
